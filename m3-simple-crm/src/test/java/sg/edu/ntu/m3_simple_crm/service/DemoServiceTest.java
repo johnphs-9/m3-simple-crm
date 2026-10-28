@@ -71,4 +71,19 @@ public class DemoServiceTest {
         // 2. ASSERT
         assertEquals(expectedFullName, actualFullName);
     }
+
+    @Test
+    void getInitials_returnsBothInitialsInCaps() {
+        // Arrange
+        DemoService service = new DemoService();
+        String first = "mei";
+        String last = "tan";
+
+        // Act
+        String result = service.getInitials(first, last);
+
+        // Assert
+        assertEquals("MT", result);
+    }
+
 }
