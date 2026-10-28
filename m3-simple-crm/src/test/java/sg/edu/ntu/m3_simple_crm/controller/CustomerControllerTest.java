@@ -1,20 +1,21 @@
 package sg.edu.ntu.m3_simple_crm.controller;
 
-// import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.test.context.support.WithMockUser;
 
 import sg.edu.ntu.m3_simple_crm.model.Customer;
 import tools.jackson.databind.ObjectMapper;
@@ -33,10 +34,19 @@ public class CustomerControllerTest {
 
         @Test
         public void getCustomersById_withoutCredentials_returnsUnauthorized() throws Exception {
-                RequestBuilder request = MockMvcRequestBuilders.get("/customers/1");
+                RequestBuilder request = MockMvcRequestBuilders.get("/customers/5");
 
                 mockMvc.perform(request)
                                 .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @WithMockUser(roles = "USER")
+        public void getAllCustomers_withValidCredentials_returnsAllCustomers() throws Exception {
+                RequestBuilder request = MockMvcRequestBuilders.get("/customers");
+
+                mockMvc.perform(request)
+                                .andExpect(status().isOk());
         }
 
         @Test
@@ -93,6 +103,6 @@ public class CustomerControllerTest {
                                 .andExpect(status().isBadRequest())
                                 .andExpect(content().contentType(MediaType.APPLICATION_JSON));
 
-        }// createCustomer_invalidCustomer_returnsBadRequest
+        }
 
 }

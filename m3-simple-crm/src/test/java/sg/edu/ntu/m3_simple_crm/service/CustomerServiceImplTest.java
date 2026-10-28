@@ -2,9 +2,7 @@ package sg.edu.ntu.m3_simple_crm.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import java.util.Optional;
 
@@ -29,7 +27,6 @@ public class CustomerServiceImplTest {
 
     @Test
     public void createCustomer_validCustomer_returnsSavedCustomer() {
-
         // 1. ARRANGE
         Customer customer = Customer.builder()
                 .firstName("Clint").lastName("Barton")
@@ -50,6 +47,28 @@ public class CustomerServiceImplTest {
     }
 
     @Test
+    public void getCustomer_found_returnsCustomer() {
+        // 1. ARRANGE
+        Long customerId = 1L;
+        Customer mockCustomer = Customer.builder()
+                .id(1L)
+                .firstName("Clint").lastName("Barton")
+                .email("clint@avengers.com").contactNo("12345678")
+                .jobTitle("Special Agent").yearOfBirth(1975)
+                .build();
+
+        // Mock the findById to return an Optional containing the customer
+        when(customerRepository.findById(customerId)).thenReturn(Optional.of(mockCustomer));
+
+        // 2. ACT
+        Customer foundCustomer = customerService.getCustomer(customerId);
+
+        // 3. ASSERT
+        assertEquals(mockCustomer, foundCustomer, "The returned customer should match the mock");
+        verify(customerRepository, times(1)).findById(customerId);
+    }
+
+    @Test
     public void getCustomer_missingId_throwsCustomerNotFoundException() {
         // 1. ARRANGE
         Long customerId = 1L;
@@ -60,5 +79,4 @@ public class CustomerServiceImplTest {
         // 2. ACT + 3. ASSERT
         assertThrows(CustomerNotFoundException.class, () -> customerService.getCustomer(customerId));
     }
-
 }

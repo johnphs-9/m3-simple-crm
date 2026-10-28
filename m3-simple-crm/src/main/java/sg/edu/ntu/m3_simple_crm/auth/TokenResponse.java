@@ -1,0 +1,12 @@
+package sg.edu.ntu.m3_simple_crm.auth;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class TokenResponse {
+    private String token;
+}
