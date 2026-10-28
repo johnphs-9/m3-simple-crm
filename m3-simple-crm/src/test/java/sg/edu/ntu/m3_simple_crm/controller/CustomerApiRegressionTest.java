@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -36,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 @Transactional
+@WithMockUser(roles = "ADMIN")
 class CustomerApiRegressionTest {
 
     @Autowired private MockMvc mockMvc;
