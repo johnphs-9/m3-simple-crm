@@ -1,8 +1,9 @@
 package sg.edu.ntu.m3_simple_crm.config;
 
+import java.util.List;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
@@ -10,7 +11,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,80 +20,64 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import sg.edu.ntu.m3_simple_crm.security.JwtAuthFilter;
+import sg.edu.ntu.m3_simple_crm.security.JwtService;
 
+/**
+ * Security configuration with two complementary authentication mechanisms:
+ * <ul>
+ *   <li><b>HTTP Basic</b> (pt1): in-memory users {@code user}/{@code admin} with RBAC on {@code /customers/**}.</li>
+ *   <li><b>JWT Bearer</b> (pt2): issued at {@code POST /auth/login}, enforced on {@code /api/**}.</li>
+ * </ul>
+ * Unauthenticated requests → 401 (HttpStatusEntryPoint); authenticated but unauthorized → 403.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-        private final JwtAuthFilter jwtAuthFilter;
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+            JwtService jwtService,
+            UserDetailsService userDetailsService) throws Exception {
+        // Inline instantiation (not a bean): the security chain is the single registration (D5).
+        JwtAuthFilter jwtAuthFilter = new JwtAuthFilter(jwtService, userDetailsService);
 
-        SecurityConfig(JwtAuthFilter jwtAuthFilter) {
-                this.jwtAuthFilter = jwtAuthFilter;
-        }
+        http
+            .csrf(csrf -> csrf.disable())   // pt1 R9 + pt2 L40
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // L41
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/auth/login").permitAll()                          // L43
+                .requestMatchers("/api/**").authenticated()                          // L44
+                .requestMatchers("/health").permitAll()                              // pt1 R11
+                .requestMatchers(HttpMethod.POST, "/customers/**").hasRole("ADMIN")  // pt1 R12
+                .requestMatchers(HttpMethod.PUT, "/customers/**").hasRole("ADMIN")   // pt1 default
+                .requestMatchers(HttpMethod.DELETE, "/customers/**").hasRole("ADMIN")// pt1 R13
+                .requestMatchers(HttpMethod.GET, "/customers/**").authenticated()    // pt1 R14
+                .anyRequest().authenticated())
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) // L45
+            .httpBasic(Customizer.withDefaults()); // pt1 R10 — kept (D3)
+        return http.build();
+    }
 
-        @Bean
-        public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
-                http
-                                // REST APIs using stateless JWT auth do not need CSRF protection.
-                                // CSRF is designed for browser-based session flows; since we never issue
-                                // a session cookie, there is nothing for a cross-site request to hijack.
-                                .csrf(csrf -> csrf.disable())
-
-                                // Stateless: Spring Security will not create or use sessions.
-                                // Every request must carry a valid JWT token.
-                                .sessionManagement(session -> session
-                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-                                // /auth/login is public; everything else needs a valid token
-                                .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/auth/login").permitAll()
-                                                .anyRequest().authenticated())
-
-                                .exceptionHandling(exceptions -> exceptions
-                                                .authenticationEntryPoint(
-                                                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
-
-                                // Register JWT filter to run before username/password authentication
-                                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
-                return http.build();
-        }
-
-        @Bean
-        public PasswordEncoder passwordEncoder() {
-                return new BCryptPasswordEncoder();
-        }
-
-        @Bean
-        public UserDetailsService userDetailsService(
-                        PasswordEncoder passwordEncoder,
-                        @Value("${app.auth.user.username}") String userUsername,
-                        @Value("${app.auth.user.password}") String userPassword,
-                        @Value("${app.auth.admin.username}") String adminUsername,
-                        @Value("${app.auth.admin.password}") String adminPassword,
-                        @Value("${app.auth.manager.username}") String managerUsername,
-                        @Value("${app.auth.manager.password}") String managerPassword) {
-
-                UserDetails user = User.builder()
-                                .username(userUsername)
-                                .password(passwordEncoder.encode(userPassword))
-                                .roles("USER")
-                                .build();
-
-                UserDetails admin = User.builder()
-                                .username(adminUsername)
-                                .password(passwordEncoder.encode(adminPassword))
-                                .roles("ADMIN")
-                                .build();
-
-                UserDetails manager = User.builder()
-                                .username(managerUsername)
-                                .password(passwordEncoder.encode(managerPassword))
-                                .roles("MANAGER")
-                                .build();
-
-                return new InMemoryUserDetailsManager(user, admin, manager);
-        }
-
+    /** pt1 in-memory users (unchanged) — also consulted by JwtAuthFilter for role mapping (D2). */
+    @Bean
+    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
+        var user = User.builder()
+                .username("user")
+                .password(passwordEncoder.encode("user123"))
+                .roles("USER")
+                .build();
+        var admin = User.builder()
+                .username("admin")
+                .password(passwordEncoder.encode("admin123"))
+                .roles("ADMIN")
+                .build();
+        return new InMemoryUserDetailsManager(List.of(user, admin));
+    }
 }

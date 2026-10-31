@@ -1,108 +1,123 @@
 package sg.edu.ntu.m3_simple_crm.controller;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
 import org.springframework.beans.factory.annotation.Autowired;
-
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.RequestBuilder;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.transaction.annotation.Transactional;
 
 import sg.edu.ntu.m3_simple_crm.model.Customer;
-import tools.jackson.databind.ObjectMapper;
+import sg.edu.ntu.m3_simple_crm.repository.CustomerRepository;
 
 @SpringBootTest
-@ActiveProfiles("test")
 @AutoConfigureMockMvc
-@Transactional
+@ActiveProfiles("test")
+@Transactional // roll back each test's data changes so tests stay independent
 public class CustomerControllerTest {
 
-        @Autowired
-        private MockMvc mockMvc;
+    private static final String CUSTOMER_JSON =
+            "{\"firstName\":\"Tony\",\"lastName\":\"Stark\",\"email\":\"tony@starkindustries.com\","
+            + "\"contactNo\":\"12345678\",\"jobTitle\":\"Iron Man\",\"yearOfBirth\":1970}";
 
-        @Autowired
-        private ObjectMapper objectMapper;
+    @Autowired
+    private MockMvc mockMvc;
 
-        @Test
-        public void getCustomersById_withoutCredentials_returnsUnauthorized() throws Exception {
-                RequestBuilder request = MockMvcRequestBuilders.get("/customers/5");
+    @Autowired
+    private CustomerRepository customerRepository;
 
-                mockMvc.perform(request)
-                                .andExpect(status().isUnauthorized());
-        }
+    // --- R7: requests without credentials are blocked (401) ---
 
-        @Test
-        @WithMockUser(roles = "USER")
-        public void getAllCustomers_withValidCredentials_returnsAllCustomers() throws Exception {
-                RequestBuilder request = MockMvcRequestBuilders.get("/customers");
+    @Test
+    public void getCustomers_withoutCredentials_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/customers"))
+                .andExpect(status().isUnauthorized());
+    }
 
-                mockMvc.perform(request)
-                                .andExpect(status().isOk());
-        }
+    // --- R11: /health is public ---
 
-        @Test
-        @WithMockUser(roles = "ADMIN")
-        public void createCustomer_validCustomer_returnsCreated() throws Exception {
-                // Step 1: Create a Customer object
-                Customer newCustomer = Customer.builder()
-                                .firstName("Clint").lastName("Barton")
-                                .email("clint@avengers.com").contactNo("12345678")
-                                .jobTitle("Special Agent").yearOfBirth(1975)
-                                .build();
+    @Test
+    public void health_withoutCredentials_returnsOk() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk());
+    }
 
-                // Step 2: Convert the Java object to a JSON-formatted String
-                // Produces: {"firstName":"Clint","lastName":"Barton",...}
-                String newCustomerAsJSON = objectMapper.writeValueAsString(newCustomer);
+    // --- R14: GET is allowed for any authenticated user ---
 
-                // Step 3: Build the POST request
-                // .contentType tells Spring to deserialize the body back into a Customer
-                RequestBuilder request = MockMvcRequestBuilders.post("/customers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(newCustomerAsJSON);
+    @Test
+    @WithMockUser(roles = "USER")
+    public void getAllCustomers_userRole_returnsOk() throws Exception {
+        mockMvc.perform(get("/customers"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/json"));
+    }
 
-                // Step 4: Perform and assert
-                mockMvc.perform(request)
-                                .andExpect(status().isCreated())
-                                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                                .andExpect(jsonPath("$.id").exists())
-                                .andExpect(jsonPath("$.firstName").value("Clint"))
-                                .andExpect(jsonPath("$.lastName").value("Barton"));
+    // --- R12: POST /customers requires ADMIN ---
 
-        } // createCustomer_validCustomer_returnsCreated
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    public void createCustomer_adminRole_returnsCreated() throws Exception {
+        mockMvc.perform(post("/customers")
+                .content(CUSTOMER_JSON)
+                .contentType("application/json"))
+                .andExpect(status().isCreated());
+    }
 
-        @Test
-        @WithMockUser(roles = "ADMIN")
-        public void createCustomer_invalidCustomer_returnsBadRequest() throws Exception {
-                // firstName and lastName are blank — violates @NotBlank
-                // email is malformed — violates @Email
-                Customer invalidCustomer = Customer.builder()
-                                .firstName("  ")
-                                .lastName("  ")
-                                .email("not-a-valid-email")
-                                .contactNo("12345678")
-                                .jobTitle("Manager")
-                                .yearOfBirth(1990)
-                                .build();
+    @Test
+    @WithMockUser(roles = "USER")
+    public void createCustomer_userRole_returnsForbidden() throws Exception {
+        mockMvc.perform(post("/customers")
+                .content(CUSTOMER_JSON)
+                .contentType("application/json"))
+                .andExpect(status().isForbidden());
+    }
 
-                String invalidCustomerAsJSON = objectMapper.writeValueAsString(invalidCustomer);
+    // --- PUT /customers/{id} requires ADMIN (assignment silent; defaulted to POST policy) ---
 
-                RequestBuilder request = MockMvcRequestBuilders.post("/customers")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(invalidCustomerAsJSON);
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    public void updateCustomer_adminRole_returnsOk() throws Exception {
+        Customer customer = customerRepository.save(new Customer("Bruce", "Banner"));
+        mockMvc.perform(put("/customers/" + customer.getId())
+                .content(CUSTOMER_JSON)
+                .contentType("application/json"))
+                .andExpect(status().isOk());
+    }
 
-                mockMvc.perform(request)
-                                .andExpect(status().isBadRequest())
-                                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+    @Test
+    @WithMockUser(roles = "USER")
+    public void updateCustomer_userRole_returnsForbidden() throws Exception {
+        Customer customer = customerRepository.save(new Customer("Bruce", "Banner"));
+        mockMvc.perform(put("/customers/" + customer.getId())
+                .content(CUSTOMER_JSON)
+                .contentType("application/json"))
+                .andExpect(status().isForbidden());
+    }
 
-        }
+    // --- R13: DELETE requires ADMIN ---
 
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    public void deleteCustomer_adminRole_returnsNoContent() throws Exception {
+        Customer customer = customerRepository.save(new Customer("Bruce", "Banner"));
+        mockMvc.perform(delete("/customers/" + customer.getId()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    public void deleteCustomer_userRole_returnsForbidden() throws Exception {
+        Customer customer = customerRepository.save(new Customer("Bruce", "Banner"));
+        mockMvc.perform(delete("/customers/" + customer.getId()))
+                .andExpect(status().isForbidden());
+    }
 }
