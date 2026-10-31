@@ -34,6 +34,11 @@ build/
 .vscode/*
 !.vscode/extensions.json
 
+### Github ###
+.github/
+.github/*
+
+
 ### Editor directories and files
 .DS_Store
 *.suo
